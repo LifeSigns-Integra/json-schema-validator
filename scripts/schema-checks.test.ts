@@ -28,6 +28,12 @@ describe('schema checks', () => {
     expect(findUnsafePatterns({ patternProperties: { '^x-': {} }, pattern: '^P-[0-9]{3}$' })).toHaveLength(0);
   });
 
+  it('accepts reviewed patterns that safe-regex2 misjudges', () => {
+    const base64 = '^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$';
+    expect(findUnsafePatterns({ pattern: base64 })).toHaveLength(0);
+    expect(findUnsafePatterns({ pattern: `${base64}|^(a+)+$` })).toHaveLength(1);
+  });
+
   it('reports schemas that do not compile', () => {
     expect(compileProblems({ $schema: S2020, type: 'nonsense' }, '2020-12')).toHaveLength(1);
     expect(compileProblems({ $schema: S2020, type: 'string' }, '2020-12')).toHaveLength(0);

@@ -27,6 +27,17 @@ export function findRemoteRefs(schema: unknown): string[] {
   return found;
 }
 
+/**
+ * Patterns that safe-regex2 flags but that were reviewed and run in linear time.
+ * safe-regex2 treats any quantifier inside another as unsafe, even a fixed count
+ * like {4} that can only split the input one way. Add an entry only after timing
+ * the pattern on long adversarial input.
+ */
+const REVIEWED_PATTERNS = new Set([
+  // Strict base64: fixed 4-char groups, then optional padding.
+  '^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$',
+]);
+
 /** Regexes with nested quantifiers can take exponential time (ReDoS). */
 export function findUnsafePatterns(schema: unknown): string[] {
   const found: string[] = [];
@@ -34,7 +45,7 @@ export function findUnsafePatterns(schema: unknown): string[] {
     let ok: boolean;
     try {
       new RegExp(source, 'u');
-      ok = safeRegex(source);
+      ok = REVIEWED_PATTERNS.has(source) || safeRegex(source);
     } catch {
       found.push(`${where}: not a valid regular expression: ${source}`);
       return;
