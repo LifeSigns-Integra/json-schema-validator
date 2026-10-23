@@ -1,0 +1,150 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lifesigns.us/schemas/device-lifecycle-event.schema.json",
+  "title": "Device Lifecycle Event",
+  "description": "Gateway envelope (EventDTO) carrying device lifecycle state transitions, published on the MQTT lifecycle topic. Events raised before a device session exists (CONNECTED, PORT_OPEN, PORT_OPEN_FAILED, ...) carry no sessionId, connectionDescriptor or deviceType, and their sequenceNumber is 0.",
+  "type": "object",
+  "required": ["eventCategory", "eventId", "deviceId", "gatewayId", "sentAt", "deviceEvents"],
+  "additionalProperties": false,
+  "properties": {
+    "eventCategory": { "type": "string", "const": "LIFECYCLE" },
+    "eventId": { "$ref": "#/$defs/uuid" },
+    "deviceId": { "type": "string", "minLength": 1, "examples": ["DEV-PHILIPS-MP30"] },
+    "deviceType": {
+      "type": "string",
+      "enum": ["PATIENT_MONITOR", "VENTILATOR", "SYRINGE_PUMP", "INFUSION_PUMP"],
+      "description": "Taken from the device session; absent when the grouped events are pre-session."
+    },
+    "gatewayId": { "type": "string", "minLength": 1, "examples": ["GW-16"] },
+    "sentAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Time the gateway sent the message (RFC 3339, UTC, up to nanosecond precision)."
+    },
+    "deviceEvents": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/lifecycleEvent" }
+    }
+  },
+  "allOf": [
+    {
+      "$comment": "Messages are grouped by (deviceId, eventCategory, deviceType) and deviceType comes from the session, so a message holds either only session events or only pre-session events.",
+      "if": { "required": ["deviceType"] },
+      "then": { "properties": { "deviceEvents": { "items": { "required": ["sessionId"] } } } },
+      "else": { "properties": { "deviceEvents": { "items": { "not": { "required": ["sessionId"] } } } } }
+    }
+  ],
+
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    },
+
+    "deviceState": {
+      "type": "string",
+      "enum": [
+        "CONNECTED", "PORT_OPEN", "BYTES_RECEIVED", "DEVICE_SESSION_STARTED",
+        "CONFIGURING", "CONFIGURED", "CONFIGURATION_FAILED", "STREAMING",
+        "DATA_STALE", "PORT_OPEN_FAILED", "CONNECTION_FAILED", "DEVICE_LOST"
+      ],
+      "description": "us.lifesigns.integra.common.enums.CommonDeviceState. Vendor-specific steps go to the event log, not here."
+    },
+
+    "lifecycleEvent": {
+      "type": "object",
+      "required": ["sequenceNumber", "eventType", "toState", "id", "occurredAt"],
+      "additionalProperties": false,
+      "properties": {
+        "sequenceNumber": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Per-session lifecycle counter starting at 1; 0 for pre-session events."
+        },
+        "eventType": {
+          "type": "string",
+          "enum": [
+            "DEVICE_CONNECTED", "DEVICE_PORT_OPEN", "DEVICE_BYTES_RECEIVED", "DEVICE_SESSION_STARTED",
+            "DEVICE_CONFIGURING", "DEVICE_CONFIGURED", "DEVICE_CONFIGURATION_FAILED", "DEVICE_STREAMING",
+            "DEVICE_DATA_STALE", "DEVICE_PORT_OPEN_FAILED", "DEVICE_CONNECTION_FAILED", "DEVICE_LOST",
+            "DEVICE_STATE_CHANGE"
+          ],
+          "description": "\"DEVICE_\" + toState (no double prefix), except Medtronic PB840 which always sends DEVICE_STATE_CHANGE."
+        },
+        "fromState": {
+          "$ref": "#/$defs/deviceState",
+          "description": "Absent for the first transition of a device and for pre-session events."
+        },
+        "toState": { "$ref": "#/$defs/deviceState" },
+        "description": { "type": "string" },
+        "connectionDescriptor": { "$ref": "#/$defs/connectionDescriptor" },
+        "id": { "$ref": "#/$defs/uuid" },
+        "occurredAt": { "type": "string", "format": "date-time" },
+        "sessionId": { "$ref": "#/$defs/uuid" }
+      },
+      "allOf": [
+        {
+          "if": { "required": ["sessionId"] },
+          "then": {
+            "required": ["connectionDescriptor"],
+            "properties": { "sequenceNumber": { "minimum": 1 } }
+          },
+          "else": {
+            "not": { "required": ["connectionDescriptor"] },
+            "properties": { "sequenceNumber": { "const": 0 } }
+          }
+        },
+        {
+          "$comment": "eventType must agree with toState.",
+          "anyOf": [
+            { "properties": { "eventType": { "const": "DEVICE_STATE_CHANGE" } } },
+            { "properties": { "eventType": { "const": "DEVICE_CONNECTED" }, "toState": { "const": "CONNECTED" } } },
+            { "properties": { "eventType": { "const": "DEVICE_PORT_OPEN" }, "toState": { "const": "PORT_OPEN" } } },
+            { "properties": { "eventType": { "const": "DEVICE_BYTES_RECEIVED" }, "toState": { "const": "BYTES_RECEIVED" } } },
+            { "properties": { "eventType": { "const": "DEVICE_SESSION_STARTED" }, "toState": { "const": "DEVICE_SESSION_STARTED" } } },
+            { "properties": { "eventType": { "const": "DEVICE_CONFIGURING" }, "toState": { "const": "CONFIGURING" } } },
+            { "properties": { "eventType": { "const": "DEVICE_CONFIGURED" }, "toState": { "const": "CONFIGURED" } } },
+            { "properties": { "eventType": { "const": "DEVICE_CONFIGURATION_FAILED" }, "toState": { "const": "CONFIGURATION_FAILED" } } },
+            { "properties": { "eventType": { "const": "DEVICE_STREAMING" }, "toState": { "const": "STREAMING" } } },
+            { "properties": { "eventType": { "const": "DEVICE_DATA_STALE" }, "toState": { "const": "DATA_STALE" } } },
+            { "properties": { "eventType": { "const": "DEVICE_PORT_OPEN_FAILED" }, "toState": { "const": "PORT_OPEN_FAILED" } } },
+            { "properties": { "eventType": { "const": "DEVICE_CONNECTION_FAILED" }, "toState": { "const": "CONNECTION_FAILED" } } },
+            { "properties": { "eventType": { "const": "DEVICE_LOST" }, "toState": { "const": "DEVICE_LOST" } } }
+          ]
+        }
+      ]
+    },
+
+    "connectionDescriptor": {
+      "type": "object",
+      "required": ["transportType"],
+      "additionalProperties": false,
+      "properties": {
+        "transportType": {
+          "type": "string",
+          "enum": ["UDP", "TCP", "RS232", "USB"],
+          "description": "us.lifesigns.integra.common.enums.TransportType"
+        },
+        "remoteIp": {
+          "type": "string",
+          "anyOf": [{ "format": "ipv4" }, { "format": "ipv6" }]
+        },
+        "remotePort": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "localPort": { "type": "integer", "minimum": 0, "maximum": 65535 },
+        "macAddress": { "type": "string", "minLength": 1 },
+        "serialPort": { "type": "string", "minLength": 1, "examples": ["/dev/ttyUSB0"] }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "transportType": { "enum": ["UDP", "TCP"] } } },
+          "then": { "required": ["remoteIp", "remotePort"] }
+        },
+        {
+          "if": { "properties": { "transportType": { "enum": ["RS232", "USB"] } } },
+          "then": { "required": ["serialPort"] }
+        }
+      ]
+    }
+  }
+}

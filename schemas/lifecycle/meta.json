@@ -1,0 +1,4 @@
+{
+  "description": "Gateway lifecycle events for a connected medical device: connection, session and streaming state changes and failures",
+  "status": "ACTIVE"
+}
