@@ -1,0 +1,36 @@
+name: CI
+
+# Runs on every pull request: checks the schema library, runs tests and
+# builds the app. Make this a required check in branch protection.
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0 # needed to diff against the base branch
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Published schema versions are unchanged
+        run: npm run check-immutable -- origin/${{ github.base_ref }}
+
+      - name: Schemas compile, use only local $ref, and have safe regexes
+        run: npm run validate-schemas
+
+      - run: npm test
+
+      - name: Build
+        run: npm run build

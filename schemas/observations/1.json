@@ -1,0 +1,294 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lifesigns.us/schemas/device-observation-event.schema.json",
+  "title": "Device Observation Event",
+  "description": "Gateway envelope (EventDTO) carrying observations polled from a bedside device, published on the MQTT observations topic.",
+  "type": "object",
+  "required": ["eventCategory", "eventId", "deviceId", "deviceType", "gatewayId", "sentAt", "deviceEvents"],
+  "additionalProperties": false,
+  "properties": {
+    "eventCategory": {
+      "type": "string",
+      "const": "OBSERVATION",
+      "description": "LIFECYCLE, ERROR, LOG and DEVICE_CONFIGURATIONS envelopes use different payloads and need their own schemas."
+    },
+    "eventId": { "$ref": "#/$defs/uuid" },
+    "deviceId": { "type": "string", "minLength": 1, "examples": ["DEV-PHILIPS-MP30"] },
+    "deviceType": {
+      "type": "string",
+      "enum": ["PATIENT_MONITOR", "VENTILATOR", "SYRINGE_PUMP", "INFUSION_PUMP"],
+      "description": "us.lifesigns.integra.common.enums.DeviceType"
+    },
+    "gatewayId": { "type": "string", "minLength": 1, "examples": ["GW-16"] },
+    "sentAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Time the gateway sent the message (RFC 3339, UTC, up to nanosecond precision)."
+    },
+    "deviceEvents": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/deviceEvent" }
+    }
+  },
+
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    },
+
+    "deviceEvent": {
+      "type": "object",
+      "required": [
+        "pollType", "parameters", "connectionDescriptor",
+        "sourceSequenceNumber", "id", "occurredAt", "sessionId", "requestId"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "pollType": {
+          "type": "string",
+          "enum": ["WAVE", "NUMERIC", "ALARM", "SETTINGS", "STATUS", "THERAPY"]
+        },
+        "parameters": {
+          "type": "array",
+          "minItems": 1,
+          "description": "Shape depends on pollType: WAVE -> waveParameter, ALARM -> alarmParameter, otherwise -> numericParameter."
+        },
+        "deviceStatus": {
+          "type": "string",
+          "enum": [
+            "INVALID", "UNAVAILABLE", "QUESTIONABLE", "CALIBRATION_ONGOING",
+            "TEST_DATA", "DEMO_DATA", "VALIDATED_DATA", "UNKNOWN"
+          ],
+          "description": "Worst MeasurementState across the parameters. Absent when no parameter carries a data-quality state (only Philips IntelliVue sets one today)."
+        },
+        "connectionDescriptor": { "$ref": "#/$defs/connectionDescriptor" },
+        "sourceSequenceNumber": { "type": "integer", "minimum": 0 },
+        "waveBlockSequenceNumber": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Sequence of wave blocks; required for WAVE, sent as 0 on other poll types."
+        },
+        "id": { "$ref": "#/$defs/uuid" },
+        "occurredAt": { "type": "string", "format": "date-time" },
+        "sessionId": { "$ref": "#/$defs/uuid" },
+        "requestId": { "type": "string", "minLength": 1, "examples": ["RR-GW-16-DEV-PHILIPS-MP30-14"] },
+        "patientId": { "type": "string", "minLength": 1, "description": "Present once the device is linked to a patient." }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "pollType": { "const": "WAVE" } } },
+          "then": {
+            "required": ["waveBlockSequenceNumber"],
+            "properties": { "parameters": { "items": { "$ref": "#/$defs/waveParameter" } } }
+          }
+        },
+        {
+          "if": { "properties": { "pollType": { "const": "ALARM" } } },
+          "then": {
+            "properties": { "parameters": { "items": { "$ref": "#/$defs/alarmParameter" } } }
+          }
+        },
+        {
+          "if": { "properties": { "pollType": { "enum": ["NUMERIC", "SETTINGS", "STATUS", "THERAPY"] } } },
+          "then": {
+            "properties": { "parameters": { "items": { "$ref": "#/$defs/numericParameter" } } }
+          }
+        }
+      ]
+    },
+
+    "numericParameter": {
+      "type": "object",
+      "required": ["code", "ieeeCode", "loincCode", "unit", "value"],
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Normalized metric code.",
+          "examples": ["HR", "RR", "TEMP", "SPO2", "PR"]
+        },
+        "ieeeCode": {
+          "type": "string",
+          "pattern": "^MDC_[A-Z0-9_]+$",
+          "description": "IEEE 11073-10101 nomenclature reference ID.",
+          "examples": ["MDC_ECG_HEART_RATE", "MDC_PULS_OXIM_SAT_O2"]
+        },
+        "loincCode": {
+          "type": "string",
+          "pattern": "^$|^[0-9]{1,7}-[0-9]$",
+          "description": "LOINC code; empty string when the mapping has no LOINC code (e.g. TEMP).",
+          "examples": ["8867-4", "59408-5", ""]
+        },
+        "unit": {
+          "type": "string",
+          "description": "UCUM unit; empty string for unitless values.",
+          "examples": ["/min", "%", "Cel"]
+        },
+        "value": {
+          "type": ["number", "string"],
+          "description": "Numeric reading, or text for coded/string values (HL7 ST/CNE, PB840 and Maquet text settings)."
+        }
+      }
+    },
+
+    "alarmParameter": {
+      "type": "object",
+      "required": ["code", "value"],
+      "additionalProperties": false,
+      "properties": {
+        "code": { "type": "string", "minLength": 1 },
+        "value": { "type": "string", "description": "Alarm message or condition text." },
+        "alarmType": { "type": "string", "enum": ["PHYSIOLOGICAL", "TECHNICAL", "ADVISORY"] },
+        "alarmStatus": { "type": "string", "enum": ["INACTIVE", "ACTIVE", "SILENCED", "LATCHED"] },
+        "alarmSeverity": { "type": "string", "enum": ["HIGHER", "MEDIUM", "LOWER"] },
+        "alarmPriority": { "type": "integer" }
+      }
+    },
+
+    "connectionDescriptor": {
+      "type": "object",
+      "required": ["transportType"],
+      "additionalProperties": false,
+      "properties": {
+        "transportType": {
+          "type": "string",
+          "enum": ["UDP", "TCP", "RS232", "USB"],
+          "description": "us.lifesigns.integra.common.enums.TransportType"
+        },
+        "remoteIp": {
+          "type": "string",
+          "anyOf": [{ "format": "ipv4" }, { "format": "ipv6" }]
+        },
+        "remotePort": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "localPort": { "type": "integer", "minimum": 0, "maximum": 65535 },
+        "macAddress": { "type": "string", "minLength": 1 },
+        "serialPort": { "type": "string", "minLength": 1, "examples": ["/dev/ttyUSB0"] }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "transportType": { "enum": ["UDP", "TCP"] } } },
+          "then": { "required": ["remoteIp", "remotePort"] }
+        },
+        {
+          "if": { "properties": { "transportType": { "enum": ["RS232", "USB"] } } },
+          "then": { "required": ["serialPort"] }
+        }
+      ]
+    },
+
+    "waveParameter": {
+      "type": "object",
+      "required": [
+        "code", "vendor", "protocol", "payload",
+        "sampleEncoding", "signalTiming", "signalValueMapping", "signalCalibration"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string",
+          "description": "Normalized signal code.",
+          "examples": ["ECG_I", "ECG_II", "ECG_III", "RESP", "PLETH"]
+        },
+        "vendor": { "type": "string", "examples": ["PHILIPS"] },
+        "protocol": { "type": "string", "examples": ["PHILIPS_DATA_EXPORT"] },
+        "payload": { "$ref": "#/$defs/payload" },
+        "sampleEncoding": { "$ref": "#/$defs/sampleEncoding" },
+        "signalTiming": { "$ref": "#/$defs/signalTiming" },
+        "signalValueMapping": { "$ref": "#/$defs/signalValueMapping" },
+        "signalCalibration": { "$ref": "#/$defs/signalCalibration" },
+        "range": {
+          "$ref": "#/$defs/range",
+          "description": "Device-declared scale/absolute range. Only sent when the device reports one (Philips); Maquet curves are calibrated without it."
+        }
+      },
+      "if": {
+        "properties": { "signalCalibration": { "properties": { "calibrated": { "const": true } } } }
+      },
+      "then": {
+        "properties": { "signalValueMapping": { "required": ["scale", "baseline"] } }
+      }
+    },
+
+    "payload": {
+      "type": "object",
+      "required": ["payloadKind", "encoding", "valid", "value", "compressionType"],
+      "additionalProperties": false,
+      "properties": {
+        "payloadKind": { "type": "string", "const": "VENDOR_NATIVE_BYTES" },
+        "encoding": { "type": "string", "const": "BASE64" },
+        "valid": { "type": "boolean" },
+        "value": {
+          "type": "string",
+          "contentEncoding": "base64",
+          "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$",
+          "description": "Raw sample bytes; decoded length should equal sampleCount × bitsPerSample / 8."
+        },
+        "compressionType": { "type": "string", "enum": ["NONE", "GZIP", "ZLIB"] }
+      }
+    },
+
+    "sampleEncoding": {
+      "type": "object",
+      "required": ["bitsPerSample", "significantBits", "byteOrder", "dataType"],
+      "additionalProperties": false,
+      "properties": {
+        "bitsPerSample": { "type": "integer", "enum": [8, 16, 32] },
+        "significantBits": { "type": "integer", "minimum": 1, "maximum": 32 },
+        "byteOrder": { "type": "string", "enum": ["BIG_ENDIAN", "LITTLE_ENDIAN"] },
+        "dataType": { "type": "string", "enum": ["UINT8", "INT8", "UINT16", "INT16", "UINT32", "INT32"] }
+      }
+    },
+
+    "signalTiming": {
+      "type": "object",
+      "required": ["samplePeriodMs", "sampleRateHz", "sampleCount"],
+      "additionalProperties": false,
+      "properties": {
+        "samplePeriodMs": { "type": "number", "exclusiveMinimum": 0 },
+        "sampleRateHz": { "type": "number", "exclusiveMinimum": 0 },
+        "sampleCount": { "type": "integer", "minimum": 1 }
+      }
+    },
+
+    "signalValueMapping": {
+      "type": "object",
+      "required": ["rawUnit", "physicalUnit"],
+      "additionalProperties": false,
+      "description": "physical = raw × scale + baseline. scale/baseline are absent for uncalibrated signals.",
+      "properties": {
+        "scale": { "type": "number" },
+        "baseline": { "type": "number" },
+        "rawUnit": { "type": "string", "const": "ADC_COUNT" },
+        "physicalUnit": {
+          "type": "string",
+          "description": "Physical unit; empty string when the signal is unitless/uncalibrated.",
+          "examples": ["mV", "Ohm", ""]
+        }
+      }
+    },
+
+    "signalCalibration": {
+      "type": "object",
+      "required": ["calibrated"],
+      "additionalProperties": false,
+      "properties": { "calibrated": { "type": "boolean" } }
+    },
+
+    "range": {
+      "type": "object",
+      "required": ["lowerScale", "upperScale", "lowerAbsolute", "upperAbsolute"],
+      "additionalProperties": false,
+      "properties": {
+        "lowerScale": { "type": "integer", "minimum": 0 },
+        "upperScale": { "type": "integer", "minimum": 0 },
+        "lowerAbsolute": { "type": "number" },
+        "upperAbsolute": { "type": "number" }
+      }
+    }
+  }
+}
+
+ 

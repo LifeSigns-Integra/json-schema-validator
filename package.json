@@ -1,0 +1,44 @@
+{
+  "name": "json-schema-validator",
+  "version": "0.1.0",
+  "scripts": {
+    "library": "tsx scripts/build-library.ts",
+    "validate-schemas": "tsx scripts/validate-schemas.ts",
+    "check-immutable": "tsx scripts/check-immutable.ts",
+    "dev": "npm run library && vite",
+    "typecheck": "tsc -p tsconfig.app.json && tsc -p tsconfig.node.json",
+    "test": "vitest run",
+    "build": "npm run validate-schemas && npm run library && npm run typecheck && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@monaco-editor/react": "^4.7.0",
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1",
+    "jsonc-parser": "^3.3.1",
+    "monaco-editor": "^0.57.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "safe-regex2": "^5.1.2",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5",
+    "vite-plugin-pwa": "^2.0.0",
+    "vitest": "^5.0.5"
+  },
+  "private": true,
+  "type": "module",
+  "description": "Offline-capable JSON Schema validator (PWA) hosted on GitHub Pages",
+  "engines": {
+    "node": ">=22"
+  },
+  "overrides": {
+    "dompurify": "^3.4.17"
+  }
+}

@@ -1,0 +1,9 @@
+node_modules/
+dist/
+coverage/
+# generated from schemas/ by `npm run library`
+public/schemas/
+# local env overrides (.env.local, .env.production.local, ...)
+*.local
+*.log
+.DS_Store
